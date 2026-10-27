@@ -1,0 +1,97 @@
+{
+  "NG_link": "https://neuroglancer-demo.appspot.com/#!https://apex-connects.s3.us-east-2.amazonaws.com/axonal_connectomics/contrast_adjusted/H17_PO6_S3_20250422/state2.json",
+  "image_tile": "H17_PO6_S3_20250422",
+  "center": [
+    23304,
+    12000,
+    1330
+  ],
+  "size": [
+    128,
+    8000,
+    128
+  ],
+  "mip": "2",
+  "tif_path": null,
+  "metadata_path": "/private/tmp/claude-502/-Users-wanqing-yu-Documents-AC-Projects-ac-data-tools/9b1a384e-1642-4385-9cee-884f0cb8e151/scratchpad/ac_data_analysis/examples/H17_PO6_S3_20250422_src0_H17_PO6_S3_20250422_src1_mip2_20261026_223628_metadata.json",
+  "merge_info": {
+    "sources_used": [
+      {
+        "source_name": "H17_PO6_S3_20250422_src0",
+        "source_idx": 0,
+        "local_region": [
+          [
+            5810,
+            2000,
+            316
+          ],
+          [
+            5842,
+            3547,
+            348
+          ]
+        ],
+        "global_region": [
+          [
+            5810,
+            2000,
+            316
+          ],
+          [
+            5842,
+            3547,
+            348
+          ]
+        ],
+        "cutout_shape": [
+          32,
+          1547,
+          32
+        ]
+      },
+      {
+        "source_name": "H17_PO6_S3_20250422_src1",
+        "source_idx": 1,
+        "local_region": [
+          [
+            5810,
+            0,
+            316
+          ],
+          [
+            5842,
+            1340,
+            348
+          ]
+        ],
+        "global_region": [
+          [
+            5810,
+            2660,
+            316
+          ],
+          [
+            5842,
+            4000,
+            348
+          ]
+        ],
+        "cutout_shape": [
+          32,
+          1340,
+          32
+        ]
+      }
+    ],
+    "overlap_regions": [],
+    "merge_strategy": "max",
+    "unfilled_voxels": 0,
+    "total_voxels": 2048000,
+    "coverage_ratio": 1.0
+  },
+  "total_sources_found": 3,
+  "accessible_sources": 3,
+  "overlapping_sources": 2,
+  "enable_cross_source": true,
+  "merge_strategy": "max"
+}

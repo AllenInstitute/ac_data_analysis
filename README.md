@@ -22,20 +22,33 @@ uv sync --extra examples
 
 ## Quick start
 
+This example uses a publicly readable iSPIM dataset, so it runs as-is with no credentials:
+
 ```python
 from ac_data_analysis import cutout_from_NG
 
-img, meta = cutout_from_NG(
-    ng_link="https://<neuroglancer-host>/#!https://json.neurodata.io/v1?NGStateID=...",
-    size=(1000, 1000, 1000),   # (z, y, x) in voxels at mip 0
-    mip="2",
-    out_path="./cutouts/",
-    post_fix="my_cutout",
+NG_LINK = (
+    "https://neuroglancer-demo.appspot.com/#!"
+    "https://apex-connects.s3.us-east-2.amazonaws.com/axonal_connectomics/"
+    "contrast_adjusted/H17_PO6_S3_20250422/state2.json"
 )
+
+img, meta = cutout_from_NG(
+    ng_link=NG_LINK,
+    size=(128, 128, 128),   # (z, y, x) in voxels at mip 0
+    mip="2",                # note: a string, not an int
+    out_path="./cutouts/",
+    post_fix="quickstart",
+)
+
+print(img.shape, meta["merge_info"]["coverage_ratio"])
 ```
 
 This writes `{sources}_mip{mip}_{post_fix}.tif` plus a matching `_metadata.json`, and returns
 the volume as an array along with the metadata dict.
+
+The dataset behind that link is tiled into three overlapping sources, so it also exercises
+the cross-source stitching described below.
 
 ### Parameters
 
@@ -66,6 +79,25 @@ means part of the requested box had no data behind it.
 
 `download_cutout_from_zarr(ng_link, layer_name, center, size, ...)` is a thin wrapper that
 calls `cutout_from_NG` with `enable_cross_source=False`, for single-source cutouts.
+
+### Choosing a merge strategy
+
+When a region spans several overlapping sources, `merge_strategy` decides which value wins:
+
+| Strategy | Behaviour |
+|---|---|
+| `first_valid` (default) | The first source whose **bounds** cover a voxel claims it |
+| `average` | Mean of every source covering the voxel |
+| `max` / `min` | Element-wise maximum / minimum across covering sources |
+
+**`first_valid` can produce black bands at tile seams.** It selects by bounds coverage, not
+by pixel content, so where one tile has black padding at its edge and a neighbour has real
+data, the padding wins. `coverage_ratio` is also computed from bounds, so it still reports
+`1.0` and the metadata gives no warning.
+
+On the quick-start dataset, a region spanning the `src0`/`src1` seam gives a 6-slice black
+band under `first_valid` and none under `max`. If your cutout crosses a seam, prefer `max`
+(for bright-on-dark data) or `average`, and inspect the result near the join.
 
 ## Command line
 
