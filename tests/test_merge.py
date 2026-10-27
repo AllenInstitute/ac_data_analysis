@@ -48,11 +48,12 @@ def merge(sources, shape, strategy="first_valid"):
     )
 
 
-def test_padding_does_not_beat_real_data():
+@pytest.mark.parametrize("strategy", ["first_valid", "average", "max", "min"])
+def test_padding_does_not_beat_real_data(strategy):
     """A tile's black edge must not win over a neighbour's real data.
 
     Two sources overlap on y in [8, 12). src0 is padded black over its last
-    four rows; src1 has real data throughout. The seam must not go black.
+    four rows; src1 has real data throughout. No strategy may darken the seam.
     """
     a = np.full((4, 12, 4), 100, dtype=np.uint16)
     a[:, 8:, :] = 0                                    # black padding at the tile edge
@@ -60,14 +61,48 @@ def test_padding_does_not_beat_real_data():
 
     merged, info = merge(
         [make_source("src0", a, (0, 0, 0)), make_source("src1", b, (0, 8, 0))],
-        shape=(4, 20, 4),
+        shape=(4, 20, 4), strategy=strategy,
     )
 
     seam = merged[:, 8:12, :]
-    assert not np.any(seam == 0), "padding won over real data at the seam"
-    assert np.all(seam == 200)
+    assert not np.any(seam == 0), f"{strategy}: padding won over real data at the seam"
+    assert np.all(seam == 200), f"{strategy}: expected the neighbour's real value"
     assert info["coverage_ratio"] == 1.0
     assert info["padding_voxels"] == 0
+
+
+def test_average_is_the_mean_of_real_contributions_only():
+    """Padding must not be averaged in and drag the seam down.
+
+    Both sources have real data on y in [8, 12): 100 and 200, so the mean is
+    150. Averaging src0's padding over y in [12, 16) would instead give 100.
+    """
+    a = np.full((4, 16, 4), 100, dtype=np.uint16)
+    a[:, 12:, :] = 0                                   # padding past the tile edge
+    b = np.full((4, 12, 4), 200, dtype=np.uint16)
+
+    merged, _ = merge(
+        [make_source("src0", a, (0, 0, 0)), make_source("src1", b, (0, 8, 0))],
+        shape=(4, 20, 4), strategy="average",
+    )
+
+    assert np.all(merged[:, 8:12, :] == 150), "mean of 100 and 200"
+    assert np.all(merged[:, 12:16, :] == 200), "src0 is padding here, so src1 alone"
+    assert np.all(merged[:, :8, :] == 100), "src0 alone"
+
+
+def test_min_ignores_padding():
+    """Zero padding would otherwise always win a minimum."""
+    a = np.full((4, 12, 4), 100, dtype=np.uint16)
+    a[:, 8:, :] = 0
+    b = np.full((4, 12, 4), 200, dtype=np.uint16)
+
+    merged, _ = merge(
+        [make_source("src0", a, (0, 0, 0)), make_source("src1", b, (0, 8, 0))],
+        shape=(4, 20, 4), strategy="min",
+    )
+
+    assert np.all(merged[:, 8:12, :] == 200)
 
 
 def test_first_source_still_wins_where_both_are_valid():
@@ -117,6 +152,8 @@ def test_nan_counts_as_padding_for_float_sources():
     )
 
     assert np.all(merged[:, 8:12, :] == 7.0)
+    # padding-only voxels resolve to zero rather than propagating NaN downstream
+    assert np.all(merged[:, :8, :] == 0.0)
 
 
 @pytest.mark.parametrize("strategy", ["average", "max", "min"])

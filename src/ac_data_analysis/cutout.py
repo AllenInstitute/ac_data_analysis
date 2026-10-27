@@ -428,12 +428,6 @@ def _valid_data_mask(arr: np.ndarray) -> np.ndarray:
     return arr != 0
 
 
-# weight_map values, used as merge priorities for 'first_valid'
-_W_EMPTY = 0.0      # nothing has written this voxel
-_W_PADDING = 0.5    # written, but only with a source's background padding
-_W_REAL = 1.0       # written with real data
-
-
 def merge_cutouts_from_sources(sources: List[SourceInfo],
                                region_start: Tuple[int, int, int],
                                region_stop: Tuple[int, int, int],
@@ -442,10 +436,19 @@ def merge_cutouts_from_sources(sources: List[SourceInfo],
     """
     Read overlapping pieces from multiple sources and merge them together.
     merge_strategy: 'first_valid', 'average', 'max', 'min'
+
+    Every strategy ignores a source's background padding where another source
+    has real data at the same voxel, so tile seams do not darken. Voxels for
+    which no source had real data are left at zero and counted separately in
+    merge_info['padding_voxels'].
     """
     region_shape = tuple(stop - start for start, stop in zip(region_start, region_stop))
     merged_cutout = np.zeros(region_shape, dtype=np.float32)
-    weight_map = np.zeros(region_shape, dtype=np.float32)
+    # Voxels any source supplied data for, real or padding. Drives coverage_ratio.
+    covered = np.zeros(region_shape, dtype=bool)
+    # How many sources contributed real (non-padding) data. Used as the divisor
+    # for 'average' and as the "anything real yet?" test for the other strategies.
+    real_count = np.zeros(region_shape, dtype=np.int32)
     source_map = np.full(region_shape, -1, dtype=np.int32)
 
     merge_info: Dict[str, Any] = {"sources_used": [], "overlap_regions": [], "merge_strategy": merge_strategy}
@@ -478,48 +481,31 @@ def merge_cutouts_from_sources(sources: List[SourceInfo],
             merge_start = tuple(overlap_start[i] - region_start[i] for i in range(3))
             merge_stop = tuple(merge_start[i] + cutout.shape[i] for i in range(3))
             merge_slice = tuple(slice(merge_start[i], merge_stop[i]) for i in range(3))
-            current_weights = weight_map[merge_slice]
+
+            # Padding never competes with real data: every mask below starts from
+            # `valid`, and `seen` counts only the real contributions made so far.
+            valid = _valid_data_mask(cutout)
+            seen = real_count[merge_slice]
 
             if merge_strategy == "first_valid":
-                # Priority order: real data > padding > nothing. Selecting purely
-                # on "has this voxel been written yet" would let the black edge of
-                # whichever tile comes first beat a neighbour's real data.
-                valid = _valid_data_mask(cutout)
-                take_real = valid & (current_weights < _W_REAL)
-                take_padding = (~valid) & (current_weights == _W_EMPTY)
-
-                merged_cutout[merge_slice][take_real] = cutout[take_real]
-                weight_map[merge_slice][take_real] = _W_REAL
-                source_map[merge_slice][take_real] = src_idx
-
-                merged_cutout[merge_slice][take_padding] = cutout[take_padding]
-                weight_map[merge_slice][take_padding] = _W_PADDING
-                source_map[merge_slice][take_padding] = src_idx
-
+                take = valid & (seen == 0)
             elif merge_strategy == "average":
-                # incremental average
-                merged_cutout[merge_slice] = (merged_cutout[merge_slice] * current_weights + cutout) / (current_weights + 1.0)
-                weight_map[merge_slice] += 1.0
-                new_mask = current_weights == 0
-                source_map[merge_slice][new_mask] = src_idx
-
+                take = valid  # summed here, divided by real_count once all sources are in
             elif merge_strategy == "max":
-                no_data_mask = current_weights == 0
-                new_data_mask = cutout > merged_cutout[merge_slice]
-                update_mask = new_data_mask | no_data_mask
-                merged_cutout[merge_slice][update_mask] = cutout[update_mask]
-                weight_map[merge_slice][no_data_mask] = 1.0
-                source_map[merge_slice][update_mask] = src_idx
-
+                take = valid & ((seen == 0) | (cutout > merged_cutout[merge_slice]))
             elif merge_strategy == "min":
-                no_data_mask = current_weights == 0
-                new_data_mask = (cutout < merged_cutout[merge_slice]) | no_data_mask
-                merged_cutout[merge_slice][new_data_mask] = cutout[new_data_mask]
-                weight_map[merge_slice][no_data_mask] = 1.0
-                source_map[merge_slice][new_data_mask] = src_idx
-
+                take = valid & ((seen == 0) | (cutout < merged_cutout[merge_slice]))
             else:
                 raise ValueError(f"Unknown merge_strategy: {merge_strategy}")
+
+            if merge_strategy == "average":
+                merged_cutout[merge_slice][take] += cutout[take]
+            else:
+                merged_cutout[merge_slice][take] = cutout[take]
+
+            source_map[merge_slice][take] = src_idx
+            real_count[merge_slice] += valid
+            covered[merge_slice] = True
 
             merge_info["sources_used"].append({
                 "source_name": src.name,
@@ -532,8 +518,11 @@ def merge_cutouts_from_sources(sources: List[SourceInfo],
             logger.warning("Failed to read from source %s: %s", src.name, exc)
             continue
 
-    unfilled_voxels = int(np.sum(weight_map == _W_EMPTY))
-    padding_voxels = int(np.sum(weight_map == _W_PADDING))
+    if merge_strategy == "average":
+        np.divide(merged_cutout, real_count, out=merged_cutout, where=real_count > 0)
+
+    unfilled_voxels = int(np.sum(~covered))
+    padding_voxels = int(np.sum(covered & (real_count == 0)))
     total_voxels = int(np.prod(region_shape))
     coverage_ratio = 1.0 - (unfilled_voxels / total_voxels) if total_voxels > 0 else 0.0
 

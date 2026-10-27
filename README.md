@@ -86,14 +86,18 @@ When a region spans several overlapping sources, `merge_strategy` decides which 
 
 | Strategy | Behaviour |
 |---|---|
-| `first_valid` (default) | The first source with **real data** at a voxel claims it |
-| `average` | Mean of every source covering the voxel |
-| `max` / `min` | Element-wise maximum / minimum across covering sources |
+| `first_valid` (default) | The first source with real data at a voxel claims it |
+| `average` | Mean of the sources with real data there |
+| `max` / `min` | Element-wise maximum / minimum across those sources |
 
-`first_valid` ranks real data above background padding. Tiled acquisitions pad the edge of
-each tile with zeros, and where tiles overlap that padding must not win over a neighbour's
-real data — otherwise seams come out as black bands. Among sources that all have real data
-the first still wins, so `source_preference` ordering behaves as you would expect.
+Every strategy ignores background padding where another source has real data. Tiled
+acquisitions pad each tile's edge with zeros, and in an overlap that padding must not beat
+a neighbour's real data — otherwise seams come out as black bands, averages get dragged
+down, and a minimum is always zero. Among sources that all have real data, `first_valid`
+keeps the first, so `source_preference` ordering behaves as you would expect.
+
+Where *no* source has real data the voxel is left at zero, including for float sources
+padded with NaN, so padding never propagates into downstream analysis.
 
 `merge_info` reports two separate numbers:
 
@@ -102,9 +106,6 @@ the first still wins, so `source_preference` ordering behaves as you would expec
 
 A large `padding_voxels` means the cutout is mostly outside the imaged material, even
 though `coverage_ratio` reads `1.0`.
-
-Note that `average` still folds padding into its mean, so it darkens tile seams. Use
-`first_valid` or `max` for seam-spanning regions.
 
 ## Command line
 
