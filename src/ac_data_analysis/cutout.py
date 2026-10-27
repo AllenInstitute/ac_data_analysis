@@ -416,6 +416,24 @@ def find_sources_for_region(sources: List[SourceInfo],
 # -----------------------
 # Merging logic
 # -----------------------
+def _valid_data_mask(arr: np.ndarray) -> np.ndarray:
+    """
+    Voxels carrying real data, as opposed to a source's background padding.
+
+    Tiled acquisitions pad the edges of each tile with zeros. Where two tiles
+    overlap, that padding must not take precedence over a neighbour's real data.
+    """
+    if np.issubdtype(arr.dtype, np.floating):
+        return np.isfinite(arr) & (arr != 0)
+    return arr != 0
+
+
+# weight_map values, used as merge priorities for 'first_valid'
+_W_EMPTY = 0.0      # nothing has written this voxel
+_W_PADDING = 0.5    # written, but only with a source's background padding
+_W_REAL = 1.0       # written with real data
+
+
 def merge_cutouts_from_sources(sources: List[SourceInfo],
                                region_start: Tuple[int, int, int],
                                region_stop: Tuple[int, int, int],
@@ -463,11 +481,20 @@ def merge_cutouts_from_sources(sources: List[SourceInfo],
             current_weights = weight_map[merge_slice]
 
             if merge_strategy == "first_valid":
-                mask = current_weights == 0
-                # careful with broadcasting shapes
-                merged_cutout[merge_slice][mask] = cutout[mask]
-                weight_map[merge_slice][mask] = 1.0
-                source_map[merge_slice][mask] = src_idx
+                # Priority order: real data > padding > nothing. Selecting purely
+                # on "has this voxel been written yet" would let the black edge of
+                # whichever tile comes first beat a neighbour's real data.
+                valid = _valid_data_mask(cutout)
+                take_real = valid & (current_weights < _W_REAL)
+                take_padding = (~valid) & (current_weights == _W_EMPTY)
+
+                merged_cutout[merge_slice][take_real] = cutout[take_real]
+                weight_map[merge_slice][take_real] = _W_REAL
+                source_map[merge_slice][take_real] = src_idx
+
+                merged_cutout[merge_slice][take_padding] = cutout[take_padding]
+                weight_map[merge_slice][take_padding] = _W_PADDING
+                source_map[merge_slice][take_padding] = src_idx
 
             elif merge_strategy == "average":
                 # incremental average
@@ -505,15 +532,21 @@ def merge_cutouts_from_sources(sources: List[SourceInfo],
             logger.warning("Failed to read from source %s: %s", src.name, exc)
             continue
 
-    unfilled_voxels = int(np.sum(weight_map == 0))
+    unfilled_voxels = int(np.sum(weight_map == _W_EMPTY))
+    padding_voxels = int(np.sum(weight_map == _W_PADDING))
     total_voxels = int(np.prod(region_shape))
     coverage_ratio = 1.0 - (unfilled_voxels / total_voxels) if total_voxels > 0 else 0.0
 
     merge_info.update({
         "unfilled_voxels": unfilled_voxels,
+        "padding_voxels": padding_voxels,
         "total_voxels": total_voxels,
         "coverage_ratio": coverage_ratio
     })
+
+    if padding_voxels and total_voxels:
+        logger.info("%d voxels (%.1f%%) had only background padding available",
+                    padding_voxels, 100.0 * padding_voxels / total_voxels)
 
     # choose dtype from first available source if present
     out_dtype = np.uint8

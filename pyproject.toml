@@ -36,6 +36,7 @@ packages = ["src/ac_data_analysis"]
 
 [dependency-groups]
 lint = ["ruff"]
+test = ["pytest"]
 
 [tool.ruff]
 extend-exclude = ["*.ipynb"]
