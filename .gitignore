@@ -22,3 +22,4 @@ data/
 tmp/
 *.tif
 .ruff_cache/
+*_metadata.json
