@@ -22,7 +22,7 @@ uv sync --extra examples
 
 ## Quick start
 
-This example uses a publicly readable iSPIM dataset, so it runs as-is with no credentials:
+This example uses a publicly readable exaSPIM dataset, so it runs as-is with no credentials:
 
 ```python
 from ac_data_analysis import cutout_from_NG
