@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.26.1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ac-data-analysis"
+version = "0.1.0"
+description = "Extract 3D cutouts from large microscopy datasets described by Neuroglancer state links"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Wan-Qing Yu", email = "wanqing.yu@alleninstitute.org" },
+]
+dependencies = [
+    "numpy>=1.24",
+    "requests>=2.32.3",
+    "scipy>=1.11.0",
+    "tensorstore>=0.1.75",
+    "tifffile>=2023.1.1",
+]
+
+[project.optional-dependencies]
+examples = [
+    "ipykernel>=6.29.5",
+    "matplotlib>=3.9",
+    "microviewer>=1.13.1",
+    "scikit-image>=0.25.2",
+]
+
+[project.scripts]
+ac-cutout = "ac_data_analysis.cutout:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ac_data_analysis"]
+
+[dependency-groups]
+lint = ["ruff"]
+
+[tool.ruff]
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

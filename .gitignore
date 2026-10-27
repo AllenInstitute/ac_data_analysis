@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# macOS
+.DS_Store
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Cutout outputs and scratch data
+cutouts/
+ac_cutouts/
+data/
+tmp/
+*.tif
+.ruff_cache/
